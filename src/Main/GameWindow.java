@@ -16,10 +16,11 @@ public class GameWindow extends JFrame {
     private GamePanel gamePanel;
     private LoginPanel loginPanel;
 
+
 //DA LINHA 20 ATÉ A LINHA 56 SEM FULLSREEN
     public GameWindow() {
         // 1. Configuração da Janela (JFrame)
-        super("2D SquareGame"); // Define o título aqui
+        super("RunCat 2D"); // Define o título aqui
         this.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE); // Vamos controlar o fechamento
         this.setResizable(true);
         this.setExtendedState(JFrame.MAXIMIZED_BOTH); //FAZ O JOGO INICIAR MAXIMIZADO
@@ -113,6 +114,13 @@ public class GameWindow extends JFrame {
      */
     public void startGame(int playerID) {
         // 1. Cria os componentes do jogo
+
+        // >>>>>>> PARAR O MENU E TOCAR MÚSICA DA FASE <<<<<<<<
+        audio.AudioManager.stopBackgroundMusic();
+        audio.AudioManager.playBackgroundMusic("1-fase.wav");
+        // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
         gamePanel = new GamePanel();
         gameEngine = new GameEngine(gamePanel, playerID);
 

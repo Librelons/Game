@@ -16,6 +16,7 @@ public class GameEngine extends Canvas implements Runnable {
     private Player player;
     private KeyInputs keyInputs;
 
+
     private long gameStartTime; //MARCOS
     private double elapsedGameTimeSeconds; //MARCOS
 
@@ -36,12 +37,12 @@ public class GameEngine extends Canvas implements Runnable {
 
     public GameEngine(GamePanel gamePanel, int playerID) {
         this.gamePanel = gamePanel;
+        // No construtor da GameEngine:
         this.playerID = playerID; // Armazena o ID do jogador
 
         // Inicializa os componentes do jogo
         this.player = new Player(this, gamePanel);
-        this.keyInputs = new KeyInputs();
-
+        this.keyInputs = new KeyInputs(gamePanel);
         // Configura os links
         gamePanel.setPlayer(player);
         player.setKeyInputs(keyInputs);
@@ -55,12 +56,21 @@ public class GameEngine extends Canvas implements Runnable {
     }
 
     protected void updatePlayer() {
-        if (player != null) {
+        // Também trava o player se o jogo acabou
+        if (player != null && !gamePanel.isGameOver()) {
             player.update();
         }
     }
 
     private void update(float secondsPerUpdate) {
+        // Se o jogo acabou, NÃO atualiza nada
+        if (gamePanel.isGameOver()) {
+            return;
+        }
+
+        if (gamePanel != null) {
+            gamePanel.update();
+        }
     }
 
     protected void render(float interpolation) {
@@ -78,7 +88,16 @@ public class GameEngine extends Canvas implements Runnable {
     public synchronized void stop() {
         if (!running) return;
         running = false;
-        Util.DatabaseConnection.saveScore(this.playerID, elapsedGameTimeSeconds);
+
+        // 1. Calcula a distância final (igual ao HUD: worldX / 20)
+        int distanciaFinal = 0;
+        if (player != null) {
+            distanciaFinal = player.getWorldX() / 20;
+        }
+
+        // 2. Salva ID, Distância e Tempo
+        Util.DatabaseConnection.saveScore(this.playerID, distanciaFinal, elapsedGameTimeSeconds);
+
         try {
             gameThread.join();
         } catch (InterruptedException e) {
@@ -86,59 +105,81 @@ public class GameEngine extends Canvas implements Runnable {
         }
     }
 
-    @Override
     public void run() {
-        // Usa o tempo de alta complexidade do sistema (nanosegundos)
         long lastTime = System.nanoTime();
         double timeAccumulator = 0.0;
 
-        //Contadores para debugar
+        // Variáveis para controle do frame (Capping)
+        long frameStartTime;
+        long frameDrawTime;
+        long timeToSleep;
+
+        // --- Variáveis para o Contador de FPS/UPS ---
         long timer = System.currentTimeMillis();
         int frames = 0;
         int updates = 0;
 
         while (running) {
+            frameStartTime = System.nanoTime(); // Marca o início do frame
+
             long now = System.nanoTime();
-            // Calcula o tempo que passou desde a última verificação em segundos
             double elapsedTime = (now - lastTime) / 1000000000.0;
             lastTime = now;
 
-            elapsedGameTimeSeconds = (now - gameStartTime) / 1000000000.0; //MARCOS
-
-            //Adiciona o tempo decorrido ao acumulador
+            // Só conta o tempo de jogo se não for Game Over
+            if (!gamePanel.isGameOver()) {
+                elapsedGameTimeSeconds += elapsedTime;
+            }
             timeAccumulator += elapsedTime;
 
-
-            // Lógica de atulização usando o Fixed Timestep
+            // Loop de Física (UPS travado em 60)
             while (timeAccumulator >= SECONDS_PER_UPDATE) {
                 update(SECONDS_PER_UPDATE);
                 updatePlayer();
                 timeAccumulator -= SECONDS_PER_UPDATE;
-                updates++; // Para debugar o FPS
+                updates++;
             }
 
-            // Lógica de Renderização com Variable Timestep com Interpolação
-            final float interpolation = (float) (timeAccumulator / SECONDS_PER_UPDATE);
-            render(interpolation);
+            // Renderização
+            render(0);
             gamePanel.repaint();
             frames++;
 
-            // Exibe o FPS e UPS
+            // --- EXIBIÇÃO DE FPS/UPS NO TERMINAL ---
             if (System.currentTimeMillis() - timer > 1000) {
-                System.out.printf("UPS: %d, FPS: %d%n, Tempo: %.2f s%n", updates, frames, elapsedGameTimeSeconds);
-                updates = 0;
+                // Imprime no console
+                System.out.printf("FPS: %d | UPS: %d | Tempo Jogo: %.2f s%n", frames, updates, elapsedGameTimeSeconds);
+
+                // Reinicia os contadores para o próximo segundo
                 frames = 0;
+                updates = 0;
                 timer += 1000;
             }
 
-            // Sistema de pausa para máquinas muito fortes de hardware
-            try {
-                Thread.sleep(1);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+            // --- CÓDIGO PARA TRAVAR O FPS EM 60 ---
+
+            // 1. Calcula quanto tempo levou para processar e desenhar este frame
+            frameDrawTime = System.nanoTime() - frameStartTime;
+
+            // 2. Define o tempo total que um frame deve durar (aprox 16.6ms)
+            long targetTime = (long) (SECONDS_PER_UPDATE * 1000000000);
+
+            // 3. Calcula quanto tempo sobra para dormir
+            timeToSleep = targetTime - frameDrawTime;
+
+            if (timeToSleep > 0) {
+                try {
+                    // Converte de nanosegundos para milissegundos para o sleep
+                    Thread.sleep(timeToSleep / 1000000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
             }
+            // ---------------------------------------
         }
     }
+
+    Graphics2D g2d = (Graphics2D) this.getGraphics();
 
     public Player getPlayer() {
         return this.player;
@@ -146,6 +187,11 @@ public class GameEngine extends Canvas implements Runnable {
 
     public double getElapsedGameTimeSeconds() {
         return elapsedGameTimeSeconds;
+    }
+
+    // Método novo para zerar o tempo manualmente
+    public void resetTimer() {
+        this.elapsedGameTimeSeconds = 0;
     }
 
 }

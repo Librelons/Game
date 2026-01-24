@@ -1,14 +1,16 @@
 package Input;
 
-
+import Main.GamePanel;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 
 public class KeyInputs implements KeyListener {
 
+    private final GamePanel gamePanel;
     public boolean upPressed, downPressed, leftPressed, rightPressed;
 
-    public KeyInputs() {
+    public KeyInputs(GamePanel gamePanel) {
+        this.gamePanel = gamePanel;
     }
 
     @Override
@@ -26,11 +28,8 @@ public class KeyInputs implements KeyListener {
         if (code == KeyEvent.VK_S){
             downPressed = true;
         }
-        if (code == KeyEvent.VK_A){
-            leftPressed = true;
-        }
-        if (code == KeyEvent.VK_D){
-            rightPressed = true;
+        if (e.getKeyCode() == KeyEvent.VK_S || e.getKeyCode() == KeyEvent.VK_DOWN) {
+            downPressed = true;
         }
     }
 
@@ -49,6 +48,9 @@ public class KeyInputs implements KeyListener {
         }
         if (code == KeyEvent.VK_D){
             rightPressed = false;
+        }
+        if (e.getKeyCode() == KeyEvent.VK_S || e.getKeyCode() == KeyEvent.VK_DOWN) {
+            downPressed = false;
         }
     }
 }

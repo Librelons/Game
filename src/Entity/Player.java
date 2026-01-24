@@ -1,55 +1,66 @@
 package Entity;
 
+import audio.AudioManager;
 import Input.KeyInputs;
 import Main.GameEngine;
 import Main.GamePanel;
 
 import javax.imageio.ImageIO;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 
 public class Player {
 
+    private int x;
+    private int y;
+
+    // --- CONTROLE DE VELOCIDADE PROGRESSIVA ---
+    private final int VELOCIDADE_INICIAL = 3; // Começa com essa velocidade
+    private final int VELOCIDADE_MAXIMA = 15; // Limite para não ficar injogável/bugado
+    private int velocidadeAtual = VELOCIDADE_INICIAL;
+
+    // --- VARIÁVEIS DE FÍSICA E COLISÃO ---
+    private final double CHAO_Y = 801.0; // A coordenada de colisão/chão
+    private double velocidadeY = 0.0;     // <--- Velocidade vertical (gravidade e salto)
+
+    // --- REFERÊNCIAS ---
     private final GamePanel gamePanel;
     private final GameEngine gameEngine;
     KeyInputs keyH;
 
-    // Sistema de Sprites
+    // --- SISTEMA DE SPRITES ---
     private BufferedImage idleSpriteSheet;
     private BufferedImage runSpriteSheet;
     private BufferedImage[] idleSprites;
     private BufferedImage[] runSprites;
     private BufferedImage currentSprite;
 
-    // Controle de animação
+    // --- CONTROLE DE ANIMAÇÃO ---
     private int currentFrame = 0;
     private long lastFrameTime = 0;
-    private final long ANIMATION_SPEED = 100; // 100ms por frame (animação mais rápida)
-
-    // Dimensões da spritesheet
-    private final int SPRITE_SIZE = 32; // Cada sprite tem 32x32 pixels
+    private final long ANIMATION_VELOCIDADE = 100;
+    private final int SPRITE_SIZE = 32;
     private int idleTotalFrames = 0;
     private int runTotalFrames = 0;
 
-    // Estados de animação
+    // --- POSIÇÃO E VELOCIDADE ---
+    private int worldX = 0;
+    public int getWorldX() { return worldX; }
+
     private AnimationState currentState = AnimationState.IDLE;
     private AnimationState previousState = AnimationState.IDLE;
 
-    // Enum para controlar estados de animação
+
+
     public enum AnimationState {
         IDLE,
         RUN
     }
 
-    private int playerX = 100, playerY = 450, speed = 2;
-    private int playerLargura = 50, playerAltura = 50;
-
-    private int plataformaX = 0;
-    private int plataformaY = 500;
-    private int plataformaLargura = GamePanel.LARGURA_TELA;
-    private int plataformaAltura = 100;
-
-    private String direction;
+    // Posição na tela (calculada)
+    private int playerX = 100, playerY = 800;
+    private final int Velocidade = 2; // <--- Velocidade Horizontal (lateral)
 
     public Player(GameEngine gameEngine, GamePanel gamePanel) {
         this.gamePanel = gamePanel;
@@ -58,69 +69,39 @@ public class Player {
         lastFrameTime = System.currentTimeMillis();
     }
 
+    public int getSpeedX() {
+        if (keyH == null) return 0;
+        if (keyH.rightPressed) return Velocidade;
+        if (keyH.leftPressed) return -Velocidade;
+        return 0;
+    }
+
     private void loadSprites() {
         try {
-            // Carrega a spritesheet IDLE
-            idleSpriteSheet = ImageIO.read(getClass().getResourceAsStream("/res/IDLE.png"));
-
-            if (idleSpriteSheet != null) {
-                idleTotalFrames = idleSpriteSheet.getWidth() / SPRITE_SIZE;
-                idleSprites = new BufferedImage[idleTotalFrames];
-
-                for (int i = 0; i < idleTotalFrames; i++) {
-                    idleSprites[i] = idleSpriteSheet.getSubimage(
-                            i * SPRITE_SIZE,
-                            0,
-                            SPRITE_SIZE,
-                            SPRITE_SIZE
-                    );
-                }
-                System.out.println("IDLE Spritesheet carregada! Frames: " + idleTotalFrames);
-            }
-
-            // Carrega a spritesheet RUN
             runSpriteSheet = ImageIO.read(getClass().getResourceAsStream("/res/RUN.png"));
-
             if (runSpriteSheet != null) {
                 runTotalFrames = runSpriteSheet.getWidth() / SPRITE_SIZE;
                 runSprites = new BufferedImage[runTotalFrames];
-
                 for (int i = 0; i < runTotalFrames; i++) {
-                    runSprites[i] = runSpriteSheet.getSubimage(
-                            i * SPRITE_SIZE,
-                            0,
-                            SPRITE_SIZE,
-                            SPRITE_SIZE
-                    );
+                    runSprites[i] = runSpriteSheet.getSubimage(i * SPRITE_SIZE, 0, SPRITE_SIZE, SPRITE_SIZE);
                 }
-                System.out.println("RUN Spritesheet carregada! Frames: " + runTotalFrames);
             }
 
-            // Define o primeiro sprite IDLE como atual
-            currentSprite = idleSprites[0];
+            if (idleSprites != null && idleSprites.length > 0) currentSprite = idleSprites[0];
 
-        } catch (Exception e) {
+        } catch (IOException e) {
             e.printStackTrace();
-            System.err.println("Erro ao carregar as spritesheets!");
         }
     }
 
-    /**
-     * Atualiza a animação do sprite baseado no tempo e estado
-     */
     private void updateAnimation() {
-        // Verifica se mudou de estado
         if (currentState != previousState) {
-            currentFrame = 0; // Reinicia a animação ao mudar de estado
+            currentFrame = 0;
             previousState = currentState;
-            System.out.println("Estado mudou para: " + currentState);
         }
 
         long currentTime = System.currentTimeMillis();
-
-        // Verifica se já passou tempo suficiente para trocar de frame
-        if (currentTime - lastFrameTime >= ANIMATION_SPEED) {
-            // Seleciona o array de sprites correto baseado no estado
+        if (currentTime - lastFrameTime >= ANIMATION_VELOCIDADE) {
             BufferedImage[] activeSprites;
             int totalFrames;
 
@@ -133,7 +114,6 @@ public class Player {
             }
 
             if (activeSprites != null && totalFrames > 0) {
-                // Avança para o próximo frame
                 currentFrame = (currentFrame + 1) % totalFrames;
                 currentSprite = activeSprites[currentFrame];
                 lastFrameTime = currentTime;
@@ -141,137 +121,169 @@ public class Player {
         }
     }
 
-    /**
-     * Define o estado de animação baseado no movimento
-     */
     private void updateAnimationState() {
-        // Verifica se está se movendo
-        boolean isMoving = keyH.rightPressed || keyH.leftPressed;
-
-        if (isMoving) {
-            currentState = AnimationState.RUN;
-        } else {
-            currentState = AnimationState.IDLE;
-        }
+        boolean isMoving = keyH != null && (keyH.rightPressed || keyH.leftPressed);
+        currentState = isMoving ? AnimationState.RUN : AnimationState.IDLE;
     }
 
     public void setKeyInputs(KeyInputs keyH) {
         this.keyH = keyH;
     }
 
-    public int getPlayerX() {
-        return playerX;
-    }
+    public BufferedImage getSprite() { return currentSprite; }
 
-    public void setPlayerX(int playerX) {
-        this.playerX = playerX;
-    }
+    // ====================================================================
+    // MOVIMENTO E FÍSICA PRINCIPAL
+    // ====================================================================
 
-    public int getPlayerY() {
-        return playerY;
-    }
-
-    public void setPlayerY(int playerY) {
-        this.playerY = playerY;
-    }
-
-    public int getPlayerLargura() {
-        return playerLargura;
-    }
-
-    public void setPlayerLargura(int playerLargura) {
-        this.playerLargura = playerLargura;
-    }
-
-    public int getPlayerAltura() {
-        return playerAltura;
-    }
-
-    public void setPlayerAltura(int playerAltura) {
-        this.playerAltura = playerAltura;
-    }
-
-    public int getPlataformaX() {
-        return plataformaX;
-    }
-
-    public void setPlataformaX(int plataformaX) {
-        this.plataformaX = plataformaX;
-    }
-
-    public int getPlataformaY() {
-        return plataformaY;
-    }
-
-    public void setPlataformaY(int plataformaY) {
-        this.plataformaY = plataformaY;
-    }
-
-    public int getPlataformaLargura() {
-        return plataformaLargura;
-    }
-
-    public void setPlataformaLargura(int plataformaLargura) {
-        this.plataformaLargura = plataformaLargura;
-    }
-
-    public int getPlataformaAltura() {
-        return plataformaAltura;
-    }
-
-    public void setPlataformaAltura(int plataformaAltura) {
-        this.plataformaAltura = plataformaAltura;
-    }
-
-    public void changePlayerX(int value) {
-        this.playerX += value;
-    }
-
-    public void changePlayerY(int value) {
-        this.playerY += value;
-    }
-
-    /**
-     * Retorna o sprite atual para renderização
-     */
-    public BufferedImage getSprite() {
-        return currentSprite;
-    }
-
-    /**
-     * Método principal de atualização do player
-     */
     public void update() {
-        // Verifica se o sistema de input está funcionando
-        if (keyH == null) {
-            return;
-        }
+        if (keyH == null) return;
 
-        // Atualiza o estado da animação baseado no input
-        updateAnimationState();
-
-        // Atualiza a animação
+        // Força animação de corrida
+        currentState = AnimationState.RUN;
         updateAnimation();
 
-        // Processa movimento baseado nas teclas pressionadas
-        if (keyH.upPressed || keyH.downPressed || keyH.rightPressed || keyH.leftPressed) {
-            if (keyH.upPressed) {
-                direction = "up";
-                playerY -= speed;
-            } else if (keyH.downPressed) {
-                direction = "down";
-                playerY += speed;
-            } else if (keyH.rightPressed) {
-                direction = "right";
-                playerX += speed;
-            } else if (keyH.leftPressed) {
-                direction = "left";
-                playerX -= speed;
+        // ----------------------------------------------------
+        // 1. CÁLCULO DA VELOCIDADE PROGRESSIVA
+        // ----------------------------------------------------
+
+        // Calcula metros (WorldX / 20)
+        int metrosPercorridos = worldX / 20;
+
+        // Calcula o "Nível" de velocidade (Sua lógica: a cada 500m)
+        int bonusVelocidade = metrosPercorridos / 500;
+
+        // Define a nova velocidade
+        velocidadeAtual = VELOCIDADE_INICIAL + bonusVelocidade;
+
+        // Trava na velocidade máxima
+        if (velocidadeAtual > VELOCIDADE_MAXIMA) {
+            velocidadeAtual = VELOCIDADE_MAXIMA;
+        }
+
+        // ----------------------------------------------------
+        // 2. MOVIMENTO AUTOMÁTICO
+        // ----------------------------------------------------
+        worldX += velocidadeAtual;
+
+        if (worldX < 0) worldX = 0;
+
+        // ----------------------------------------------------
+        // 3. GRAVIDADE, PULO E DESCIDA RÁPIDA (FAST FALL)
+        // ----------------------------------------------------
+
+        // Se estiver no ar (acima do chão)
+        if ((double)playerY < CHAO_Y) {
+            velocidadeY += 0.5; // Gravidade Normal
+
+            // --- NOVO: FAST FALL (Descer rápido) ---
+            // Se apertar para baixo (S) enquanto cai, desce muito mais rápido
+            if (keyH.downPressed) {
+                velocidadeY += 1.5f;
             }
+            // ---------------------------------------
+
+        } else if ((double)playerY > CHAO_Y) {
+            // Correção se passar do chão
+            playerY = (int) CHAO_Y;
+            velocidadeY = 0.0;
+        }
+
+        // Calcula posição futura
+        double proximaY = playerY + velocidadeY;
+
+        // Verifica colisão (anti-tunneling)
+        double yCorrigido = verificarColisaoY((double) playerY, proximaY);
+
+        // Aplica posição Y
+        playerY = (int) Math.round(yCorrigido);
+
+        // --- NOVO: PULO MAIS ALTO ---
+        // Se apertar Pulo e estiver no chão
+        if (keyH.upPressed && (double)playerY == CHAO_Y) {
+            // Aumentado de -15.0 para -18.0
+            velocidadeY = -18.0;
         }
     }
+
+    /**
+     * Verifica se o movimento de 'yAtual' para 'yProxima' cruzou o CHAO_Y (801.0).
+     * Trata o problema de "tunneling" e zera a velocidade vertical.
+     * @param yAtual A posição Y antes da aplicação da velocidade.
+     * @param yProxima A posição Y depois da aplicação da velocidade.
+     * @return A nova posição Y, corrigida para o limite (CHAO_Y) em caso de colisão.
+     */
+    private double verificarColisaoY(double yAtual, double yProxima) {
+        // Se o player estava ACIMA do chão (yAtual < CHAO_Y) E cruzou para BAIXO (yProxima >= CHAO_Y)
+        if (yAtual < CHAO_Y && yProxima >= CHAO_Y) {
+
+            // **IMPORTANTE:** Zera a velocidade vertical para parar a queda.
+            this.velocidadeY = 0.0;
+
+            // Retorna o valor exato do chão para que playerY pare em 801.
+            return CHAO_Y;
+
+        } else {
+            // Nenhuma colisão ou o player já está no ar.
+            return yProxima;
+        }
+    }
+
+    public int getPlayerX() { return playerX; }
+    public int getPlayerY() { return playerY; }
+
     public double getGameTime() {
-        // O player pede o tempo para o gameEngine
         return gameEngine.getElapsedGameTimeSeconds();
     }
+    public Rectangle getBounds() {
+        // TAMANHO DO SPRITE: 128x128
+        // TAMANHO DO INIMIGO: 64x64
+
+        // Queremos que a hitbox pegue apenas a METADE DE BAIXO do player
+        // para garantir que ele bata de frente com o inimigo pequeno.
+
+        int larguraHitbox = 64;
+        int alturaHitbox = 64; // Mesma altura do inimigo
+
+        // OFFSET X: Centraliza horizontalmente no sprite de 128
+        int offsetX = (128 - larguraHitbox) / 2; // = 32
+
+        // OFFSET Y: Empurra para baixo.
+        // Se o sprite tem 128 e a hitbox tem 64, sobram 64 pixels.
+        // Somamos 64 ao Y para a caixa descer até o pé.
+        int offsetY = 128 - alturaHitbox; // = 64
+
+        // RETORNO FINAL
+        return new Rectangle(worldX + offsetX, playerY + offsetY, larguraHitbox, alturaHitbox);
+    }
+
+    public void resetTimer() {
+        // Zera o tempo na engine
+        gameEngine.resetTimer();
+
+        // --- MUDANÇA: Zera a distância e reseta a velocidade ---
+        this.worldX = 0;
+        this.velocidadeAtual = VELOCIDADE_INICIAL;
+        this.playerY = 800; // Reseta posição Y para o chão (ajuste se seu chão for diferente)
+    }
+
+    public int getVelocidadeAtual() {
+        // Retorna a velocidade que calculamos no passo anterior
+        return this.velocidadeAtual;
+    }
+
+    // ====================================================================
+    // LÓGICA DE MORTE E SOM
+    // ====================================================================
+
+    public void checkDeath() {
+        // 1. Para a música da fase imediatamente
+        AudioManager.stopBackgroundMusic();
+
+        // 2. Toca o som de morte
+        // Nota: Se você criou o método 'playSound' (sem loop) que sugeri antes, use ele aqui.
+        // Caso contrário, use playBackgroundMusic mesmo.
+        AudioManager.playGameOverMusic("death.wav");
+    }
+
 }
