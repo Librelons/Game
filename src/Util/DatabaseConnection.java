@@ -11,28 +11,53 @@ import java.util.List;
 
 public class DatabaseConnection {
 
-    private static final String DB_URL = "jdbc:mysql://localhost:3306/game_data"; // DEFINA O IP E A PORTA DO SEU BANCO DE DADOS MYSQL
-    private static final String DB_USER = "XXXXX"; //SUBSTITUA O XXXXX PELO SEU USUARIO DO BANCO
-    private static final String DB_PASS = "XXXXX"; //SUBISTITUA O XXXXX PELA SENHA SENHA DO BANCO
+    // URL do SQLite: Cria um arquivo chamado 'game_data.db' na pasta do projeto
+    private static final String DB_URL = "jdbc:sqlite:game_data.db"; 
 
     public static Connection getConnection() {
         try {
-            // Isso registra o driver
-            Class.forName("com.mysql.cj.jdbc.Driver");
+            // Registra o driver do SQLite
+            Class.forName("org.sqlite.JDBC");
 
-            // Tenta estabelecer a conexão
-            Connection connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
-            System.out.println("Conexão com o banco de dados estabelecida!");
+            // Tenta estabelecer a conexão (cria o arquivo se não existir)
+            Connection connection = DriverManager.getConnection(DB_URL);
+            
+            // Garante que as tabelas existam no banco local
+            createTablesIfNotExists(connection);
+            
             return connection;
 
         } catch (SQLException e) {
-            System.err.println("Erro ao conectar ao banco de dados: " + e.getMessage());
+            System.err.println("Erro ao conectar ao banco de dados local: " + e.getMessage());
             e.printStackTrace();
             return null;
         } catch (ClassNotFoundException e) {
-            System.err.println("Driver MySQL não encontrado! Verifique se o .jar está no projeto.");
+            System.err.println("Driver SQLite não encontrado! Verifique se o .jar está no projeto.");
             e.printStackTrace();
             return null;
+        }
+    }
+
+    // Método para criar as tabelas automaticamente no arquivo local
+    private static void createTablesIfNotExists(Connection conn) {
+        String sqlJogador = "CREATE TABLE IF NOT EXISTS tbl_jogador ("
+                + "id_jogador INTEGER PRIMARY KEY AUTOINCREMENT,"
+                + "nome TEXT NOT NULL UNIQUE"
+                + ");";
+
+        String sqlPontuacao = "CREATE TABLE IF NOT EXISTS tbl_pontuacao ("
+                + "id_pontuacao INTEGER PRIMARY KEY AUTOINCREMENT,"
+                + "id_jogador INTEGER,"
+                + "pontos INTEGER,"
+                + "tempo_corrido REAL,"
+                + "FOREIGN KEY(id_jogador) REFERENCES tbl_jogador(id_jogador)"
+                + ");";
+
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute(sqlJogador);
+            stmt.execute(sqlPontuacao);
+        } catch (SQLException e) {
+            System.err.println("Erro ao criar tabelas: " + e.getMessage());
         }
     }
 
@@ -42,7 +67,7 @@ public class DatabaseConnection {
         if (conn != null) {
             try {
                 conn.close();
-                System.out.println("Conexão fechada com sucesso.");
+                System.out.println("Conexão com o banco local criada e fechada com sucesso.");
             } catch (SQLException e) {
                 e.printStackTrace();
             }
@@ -54,22 +79,18 @@ public class DatabaseConnection {
         String selectSql = "SELECT id_jogador FROM tbl_jogador WHERE nome = ?";
         String insertSql = "INSERT INTO tbl_jogador (nome) VALUES (?)";
 
-        //try-with-resources para a conexão (fecha automaticamente)
         try (Connection conn = getConnection()) {
-
             if (conn == null) return -1;
 
             // --- 1. Tenta Encontrar o Jogador ---
-            // (try-with-resources para o PreparedStatement e ResultSet)
             try (PreparedStatement pstmtSelect = conn.prepareStatement(selectSql)) {
                 pstmtSelect.setString(1, playerName);
 
                 try (ResultSet rs = pstmtSelect.executeQuery()) {
                     if (rs.next()) {
-                        // --- Jogador ENCONTRADO ---
                         int playerID = rs.getInt("id_jogador");
                         System.out.println("Jogador '" + playerName + "' encontrado com ID: " + playerID);
-                        return playerID; // Retorna o ID existente
+                        return playerID; 
                     }
                 }
             }
@@ -77,7 +98,6 @@ public class DatabaseConnection {
             // --- 2. Jogador NÃO Encontrado, crie um novo ---
             System.out.println("Jogador '" + playerName + "' não encontrado. Criando novo...");
 
-            // (try-with-resources para o PreparedStatement de inserção)
             try (PreparedStatement pstmtInsert = conn.prepareStatement(insertSql, Statement.RETURN_GENERATED_KEYS)) {
                 pstmtInsert.setString(1, playerName);
                 int affectedRows = pstmtInsert.executeUpdate();
@@ -87,24 +107,22 @@ public class DatabaseConnection {
                         if (genKeys.next()) {
                             int playerID = genKeys.getInt(1);
                             System.out.println("Jogador '" + playerName + "' criado com ID: " + playerID);
-                            return playerID; // Retorna o NOVO ID
+                            return playerID; 
                         }
                     }
                 }
             }
 
-            // Se algo falhou na inserção
             return -1;
 
         } catch (SQLException e) {
             System.err.println("Erro ao buscar ou criar jogador:");
             e.printStackTrace();
-            return -1; // Retorna -1 em caso de erro
+            return -1; 
         }
     }
 
     public static void saveScore(int playerID, int pontos, double tempoCorrido) {
-        // Metodo para salvar 'pontos' (distância) e 'tempo_corrido'
         String sql = "INSERT INTO tbl_pontuacao (id_jogador, pontos, tempo_corrido) VALUES (?, ?, ?)";
 
         try (Connection conn = getConnection();
@@ -113,8 +131,8 @@ public class DatabaseConnection {
             if (conn == null) return;
 
             pstmt.setInt(1, playerID);
-            pstmt.setInt(2, pontos);        // Salva a distância na coluna pontos
-            pstmt.setDouble(3, tempoCorrido); // Salva o tempo
+            pstmt.setInt(2, pontos);        
+            pstmt.setDouble(3, tempoCorrido); 
 
             pstmt.executeUpdate();
             System.out.printf("Score salvo! ID: %d, Distância: %d m, Tempo: %.2f s%n", playerID, pontos, tempoCorrido);
@@ -125,13 +143,9 @@ public class DatabaseConnection {
         }
     }
 
-    /**
-     * Busca o Top 10 ordenado por PONTOS (Distância) DESC (Maior para menor).
-     */
     public static List<String> getTopScores() {
         List<String> topScores = new ArrayList<>();
 
-        //ORDER BY p.pontos DESC (Quem foi mais longe aparece primeiro)
         String sql = "SELECT j.nome, p.tempo_corrido, p.pontos " +
                 "FROM tbl_pontuacao p " +
                 "JOIN tbl_jogador j ON p.id_jogador = j.id_jogador " +
@@ -148,11 +162,9 @@ public class DatabaseConnection {
             while (rs.next()) {
                 String nome = rs.getString("nome");
                 double tempo = rs.getDouble("tempo_corrido");
-                int distancia = rs.getInt("pontos"); // A coluna pontos agora guarda a distância
+                int distancia = rs.getInt("pontos"); 
 
-                // Formata: "1. Nome - 1500m (30.5s)"
-                String scoreLine = String.format("%d. %s - %d m (%.2f s)",
-                        rank, nome, distancia, tempo);
+                String scoreLine = String.format("%d. %s - %d m (%.2f s)", rank, nome, distancia, tempo);
                 topScores.add(scoreLine);
                 rank++;
             }
@@ -163,4 +175,3 @@ public class DatabaseConnection {
         return topScores;
     }
 }
-
